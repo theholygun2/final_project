@@ -1,0 +1,890 @@
+#!/bin/bash
+
+kartu_id=0
+pin=0
+regex="^[0-9]+$"
+regexnama="^[\w]"
+regextelkomsel="^08[125][123][0-9]{7,8}$"
+regexxl="^08[157][789][0-9]{7,8}$"
+regexindosat="08[51][45678][0-9]{7,8}"
+
+
+BankSystem()
+{
+	clear
+	HalUtama
+}
+
+HalUtama()
+{
+	clear
+	echo ""
+	echo "   		                                       			BANK                    "
+        echo ""
+        echo ""
+        echo "                  1. Buat Rekening Baru									2. Login Menu "
+        echo ""
+	echo ""
+	echo ""
+	echo "						*Warning: you must have a bank account to login*"
+	echo ""
+	echo " 0.quit"
+	echo ""
+	echo
+	read choice
+	
+	case $choice in
+		1) BuatRekBaru;;
+		2) LoginMenu;;
+		0) clear
+			exit;;
+		*) HalUtama ;;
+	esac
+
+}
+
+LoginMenu()
+{
+	clear
+	echo ""
+	echo "					CHOOSE TRANSACTION PLATFORM	"
+	echo ""
+	echo ""
+	echo ""
+	echo " 		ATM 									 E-Payment"
+	echo " (Physicaly insert a card through the ATM)				(Mobile app using CICIT PAY E-Payment Platform)"	
+	echo ""
+        echo " 1. Insert Card and pin to atm machine						2. Enter PhoneNumber CICIT PAY"
+	echo ""
+	echo ""
+	echo "			*WARNING: You must have a bank account to be able to acces to ATM or E-payment(CicitPay)*"
+	echo ""
+	echo " 0. Back to Main Menu"
+        read pilihan
+        
+	case $pilihan in 
+		1) ATMLogin ;;
+		2) CicitLogin ;;
+		0) HalUtama ;;
+		*) LoginMenu ;;
+	esac
+}
+
+BuatRekBaru()
+{
+	clear
+        echo "BUAT REKENING BARU"
+	read -p "Masukan Nama:		|" nama
+	read -p "Masukan NIK: 		|" nasabah_id
+	read -p "Masukan Email		|" email
+	read -p "No Hape:		|" noHape
+	read -p "Alamat:			|" alamat
+	read -p "Setor Awal(min. 500000):|" set_aw
+	echo ""
+
+	if [[ $noHape =~ $regextelkomsel ]] || [[ $noHape =~ $regexxl ]] || [[ $noHape =~ $regexindosat  ]];
+	then	
+		stats=$(mysql projek -se "SELECT EXISTS(SELECT * FROM nasabah WHERE nasabah_id = $nasabah_id)")
+		
+		if [ $stats -eq 0 ]
+		then
+
+		if [ $set_aw -ge 500000 ]
+		then
+		read -p "Lanjut	[y|n]" verify
+	
+		if [ $verify == "y" ]
+		then
+			#BuatNasabah "$nasabah_id" "$nama" "$email" "$noHape" "$alamat" $set_aw
+			mysql projek -se "CALL DaftarNasabah($nasabah_id, '$nama', '$email', '$noHape', '$alamat', $set_aw);"
+
+			clear
+			IFS="\t"
+			info="$(PrintInfo)" 
+		        IFS="$( echo -e '\t')" read info1 info2 info3 info4 <<< "$info"
+			echo "WELCOME "$info1"!!"
+			echo ""
+			echo "REKENING"
+			echo "Nomor Rekening Baru Anda	: "$info2""
+			echo ""
+			echo "KARTU"
+			echo "Nomor Kartu Baru Anda		: "$info3""
+			echo "Pin Baru Anda			: "$info4""
+			echo ""
+			echo "Dengan Saldo Awal Sebesar : |Rp| $set_aw"
+
+			echo ""
+			echo ""
+			read -p "enter to continue"
+			LoginMenu
+		else
+			LoginMenu
+		fi
+	else
+		echo "Setor tidak sesuai Ketentuan"
+		read
+		BuatRekBaru
+	fi
+else
+	echo "Nasabah_id sudah terpakai"
+	read
+	HalUtama
+fi
+else
+	echo "kesalahan format pada No Handphone"
+	read
+	BuatRekBaru
+fi
+
+}
+
+
+PrintInfo()
+{
+ 	echo ""$( mysql projek -se "SELECT n.nama, n.rek_id, k.kartu_id, k.pin FROM nasabah n JOIN rekening r ON n.rek_id = r.rek_id JOIN kartu k ON k.rek_id = r.rek_id ORDER BY rek_id desc LIMIT 1;")""
+}
+
+PinCheck()
+{
+	local kartu=$1
+	local try=$2
+	read -p " Masukan pin anda: " pinZ
+	pindb=$(mysql projek -se "SELECT pin FROM kartu WHERE kartu_id = "$kartu"")
+
+	if [ "$pinZ" == "$pindb" ]
+        then
+		kartu_id=$kartu
+		pin=$pindb
+                Menu
+	else
+		echo "numbers of try left: $try"
+		((try--))
+
+		if [ $try -ge 0 ]
+		then
+                PinCheck $kartu $try
+		else
+			clear
+			echo "ACCESS DENIED"
+			read
+			LoginMenu
+		fi
+        fi
+}
+
+ATMLogin()
+{
+	clear
+	echo "				INSERT YOUR ATM CARD"
+	echo ""
+	read -p " Masukan ID Kartu: " k
+	stats=$(mysql projek -se "SELECT EXISTS(SELECT * FROM kartu WHERE kartu_id = "$k")")
+
+	if [ "$stats" -eq 1 ]
+        then
+                PinCheck $k 3
+        else
+		clear
+		echo "card not found"
+		read
+                LoginMenu
+        fi
+
+}
+
+Menu()
+{
+	clear
+
+	local rek_id="$(mysql projek -se "SELECT rek_id FROM kartu WHERE kartu_id = "$kartu_id"")"
+	local saldo="$(mysql projek -se "SELECT saldo FROM rekening WHERE rek_id = "$rek_id"")"
+	
+	echo " SETOR Tarik"
+	echo " 1. Setor Tunai"
+	echo " 2. Tarik Tunai"
+	echo ""
+	echo "TRANSFER"
+	echo " 3. Transfer Antar Rekening"
+	echo " 4. Transfer Virtual account"
+
+	echo ""
+	echo "INFO"
+	echo "5. Cek Saldo"
+	echo "6. Cek Histori"
+	echo "7. Ubah pin"
+	echo ""
+	echo "0. Logout"
+	echo ""
+	read pilTrans
+	
+	case $pilTrans in
+	
+	1)
+		clear
+		local noChar="^[1-9][0-9][0-9][0]{1,5}$"
+		echo "		SETOR TUNAI"
+		echo ""
+		read -p "MASUKAN JUMLAH UANG: " setor
+
+		if [[ $setor =~ $noChar ]];
+		then		
+		mysql projek -se "UPDATE rekening SET saldo = saldo + $setor WHERE rek_id = $rek_id"
+		mysql projek -se "INSERT INTO histori VALUES(default, '+', $rek_id, $setor, default, $rek_id)"
+		
+		echo "Penyeteroran berhasil sebesar: 	$setor"
+		
+		read
+		Menu 
+		else
+			echo "format penyetoran salah"
+			read
+			Menu
+		fi;;
+
+	2)	Tarik $rek_id $saldo ;;
+
+	3)
+		TransAntarRek $rek_id $saldo ;;
+
+	4) 	clear
+		read -p "MASUKAN VIRTUAL ACCOUNT(15-17): " virtual
+		regex="^[0-9]{15,17}$"
+		if [[ $virtual =~ $regex ]];
+			then
+			TransVirtual $rek_id $saldo "$virtual"
+			else
+			clear
+			echo "Digits only please"
+			read
+			Menu 
+		fi ;;
+
+	5)	
+		CekSaldo $saldo	;;
+		
+	6)
+		CekHistori 1 $rek_id ;;
+	7)	
+		clear
+		echo "Ubah Pin"
+		local regexpin="^[0-9]{6}$"
+		read -p "Masukan Pin Baru: " pinB
+		read -p "Konfirmasi Pin Anda: "	pinK
+		echo ""
+
+		if [ "$pinK" == "$pinB" ] && [[ $pinB =~ $regexpin ]]; 
+		then
+			echo "Pin Altered"
+			mysql projek -se "UPDATE kartu SET pin = $pinK WHERE kartu_id = $kartu_id"
+			read
+			Menu
+		else
+			echo "Pin tidak sama atau format pin salah"
+			read
+			Menu
+		fi ;;
+
+	0)
+		LoginMenu ;;
+	*)
+		Menu ;;
+	esac
+
+}
+
+Tarik()
+{
+	local rek_id=$1
+	local saldo=$2
+	clear
+	echo "				TARIK TUNAI"
+	echo ""
+	echo "Masukan Jumlah Uang untuk ditarik: "
+	echo ""
+	echo " 1. 100.000			4. 1.000.000"
+	echo " 2. 300.000			5. 2.000.000"
+	echo " 3. 500.000			0. Cancel"
+	echo ""
+	read choice
+
+	case $choice in
+		1) if [ $saldo -ge 100000 ]
+                 then 
+                        mysql projek -se "UPDATE rekening SET saldo = saldo - 100000 WHERE rek_id = $rek_id"
+                        echo "Penarikan Berhasil"
+                        read
+                        Menu
+                else
+                        echo "Saldo anda tidak cukup"
+                        read
+                        Menu
+                fi ;;
+	2) if [ $saldo -ge 300000 ]
+                 then 
+                        mysql projek -se "UPDATE rekening SET saldo = saldo - 300000 WHERE rek_id = $rek_id"
+                        echo "Penarikan Berhasil"
+                        read
+                        Menu
+                else
+                        echo "Saldo anda tidak cukup"
+                        read
+                        Menu
+                fi ;;
+	3)if [ $saldo -ge 500000 ]
+                 then 
+                        mysql projek -se "UPDATE rekening SET saldo = saldo - 500000 WHERE rek_id = $rek_id"
+                        echo "Penarikan Berhasil"
+                        read
+                        Menu
+                else
+                        echo "Saldo anda tidak cukup"
+                        read
+                        Menu
+                fi ;;
+	4)if [ $saldo -ge 1000000 ]
+                 then 
+                        mysql projek -se "UPDATE rekening SET saldo = saldo - 1000000 WHERE rek_id = $rek_id"
+                        echo "Penarikan Berhasil"
+                        read
+                        Menu
+                else
+                        echo "Saldo anda tidak cukup"
+                        read
+                        Menu
+                fi ;;
+	5)if [ $saldo -ge 2000000 ]
+                 then 
+                        mysql projek -se "UPDATE rekening SET saldo = saldo - 2000000 WHERE rek_id = $rek_id"
+                        echo "Penarikan Berhasil"
+                        read
+                        Menu
+                else
+                        echo "Saldo anda tidak cukup"
+                        read
+                        Menu
+                fi ;;
+	6) Menu ;;
+	*) Tarik $rek_id $saldo ;;
+	esac
+}
+
+TransAntarRek()
+{
+	clear
+	local rek_id=$1
+	local saldo=$2
+	echo "TRANS Antar REK"
+	read -p "masukan Nomor rekening Tujuan:	" rek_tujuan
+	echo ""
+	read -p "Masukan Jumlah: |Rp.|" jmlTransfer
+	echo ""
+	dari=$(mysql projek -se "SELECT nama FROM nasabah  WHERE rek_id = $rek_id")
+	ke=$(mysql projek -se "SELECT nama FROM nasabah  WHERE rek_id = $rek_tujuan")
+	echo "dari	: $rek_id| $dari"
+	echo "ke	: $rek_tujuan | $ke"
+	echo "Rp $jmlTransfer"
+	read
+
+	if [ -z "$ke" ]
+	then
+		echo "Rekening Not Found"
+		read 
+		Menu
+	else
+		echo "1. OK"
+		echo "0. Cancel"
+		read oc
+
+		if [ $oc -eq 1 ]
+		then
+			if [ $saldo -ge $jmlTransfer ]
+        		then
+				mysql projek -se "CALL TransAntarRek($jmlTransfer, '$dari', '$ke', $rek_id, $rek_tujuan)"
+                echo ""
+                echo "Transfer Sukses"
+                read
+                Menu
+
+        		else
+                	echo "Saldo Tidak Cukup"
+               		Menu
+			echo ""
+			fi
+		else
+			Menu
+		fi
+	fi
+}
+
+TransVirtual()
+{
+	clear
+	local rek_id=$1
+	local saldo=$2
+	local virtual=$3
+	local code=${virtual:0:5}
+	local nama=$(mysql projek -se "select nama from company where company_id = $code")
+
+	if [ -z "$nama"  ]
+	then 
+		clear
+		echo "Virtual Account: $virtual tidak ditemukan!"
+		read
+		Menu
+	else
+	
+	read -p "Masukan jumlah transfer: " jumlah
+	
+	echo "VIRTUAL ACCOUNT"
+	echo "Nama	: $nama"
+	echo "Virtual Account	: $virtual"
+	echo "Jumlah	: $jumlah"
+	echo ""
+	echo "Continue? y/n"
+	read verify
+
+	if [ $verify == y ]
+	then
+		if [ $saldo -ge $jumlah ]
+		then
+			clear
+	mysql projek -se "UPDATE rekening SET saldo = saldo - $jumlah WHERE rek_id = $rek_id"
+	mysql projek -se "UPDATE rekening SET saldo = saldo + $jumlah WHERE rek_id = (SELECT rek_id FROM company WHERE company_id = $code)"
+	mysql projek -se "UPDATE cicit SET saldo = saldo + $jumlah WHERE cicit_id = $virtual"
+	mysql projek -se "INSERT histori VALUES(default, '-', (SELECT rek_id FROM company WHERE company_id = $code), $jumlah, default, $rek_id)"
+
+	echo "Transaksi Berhasil "
+	read
+	Menu
+
+	else
+		clear
+		echo "Saldo Kamu tidak cukup :("
+		Menu
+	fi
+else
+	Menu 
+fi
+fi
+}
+
+CekSaldo()
+{	
+	clear
+	echo "Sisa Saldo: "$1""
+	read
+	Menu
+}
+
+CekHistori()
+{
+	clear
+	local counter=$1
+	local rek_id=$2
+	IFS="\t"
+	info=$(mysql projek -se "CALL CekHistori($rek_id)")
+IFS="$( echo -e '\t')"
+
+	echo "|id|	|ket|		[nama]				[jumlah]			[datetime]			1. Toggle Merge/Split History"
+	echo ""
+while read a b c d e
+do
+        echo "[${a}] 	[${b}] 		[${c}] 		[${d}] 			${e}"
+done < <(echo "$info")
+
+echo""
+read counter
+
+case $counter in 
+	1) CekHistoriSplit $counter $rek_id;;
+	*) Menu ;;
+esac
+}
+
+CekHistoriSplit()
+{
+	clear
+	local counter=$1
+	local rek_id=$2
+	IFS="\t"
+	info1=$(mysql projek -se "CALL CekHistoriOut($rek_id)")
+
+IFS="$( echo -e '\t')"
+
+        echo "|id|     |ket|           [nama]                   [jumlah]                        [datetime]"
+        echo ""
+while read a b c d e
+do
+        echo "[${a}]    [${b}]          [${c}]          	[${d}]                  ${e}"
+done < <(echo "$info1")
+
+echo""
+echo "=============================================================================================================================================================================================="
+echo ""
+
+IFS="\t"
+info2=$(mysql projek -se "CALL CekHistoriIn($rek_id)")
+IFS="$( echo -e '\t')"
+
+
+        echo "|id|     |ket|           [nama]                   [jumlah]                        [datetime]"
+        echo ""
+while read f g h i j
+do
+        echo "[${f}]    [${g}]          [${h}]          	[${i}]                  ${j}"
+done < <(echo "$info2")
+
+echo""
+read counter
+
+case $counter in 
+	1) CekHistori $counter $rek_id ;;
+	*) Menu ;;
+esac
+
+}
+
+CicitLogin()
+{
+	clear
+	telkomsel="^08[125][123][0-9]{7,8}$"
+        xl="^08[157][789][0-9]{7,8}$"
+        indosat="08[51][45678][0-9]{7,8}"
+	local stats=0
+	echo "CICIT pay :-)"
+	
+	read -p "Masukan nomor handphone anda: " hp_num
+	stats=$(mysql projek -se "SELECT EXISTS(SELECT hp_num FROM cicit WHERE hp_num = $hp_num)")
+
+	if [[ $hp_num =~ $telkomsel ]] || [[ $hp_num =~ $xl ]] || [[ $hp_num =~ $indosat ]]
+	then
+
+		if [ $stats -eq 1 ]
+		then
+			AppMenu $hp_num
+		else
+			DaftarCicitBaru $hp_num
+		fi
+	else
+		clear
+		echo "Format nomor tidak sesuai"
+		read
+		HalUtama
+	fi
+}
+
+DaftarCicitBaru()
+{
+	clear
+	local hp_num=$1
+	local cicit_id=70001$hp_num
+	echo "Looks Like your number not registered yet! :o "
+	echo ""
+	echo "But dont worry we'll help you sign up for $hp_num"
+	echo "all you have to do is fill the sheet below :)))"
+	echo ""
+	read -p "Masukan Nama	: " nama
+	read -p "Email		: " email
+
+	read -p "Continue?(Y/N)  " verify
+	
+	if [ $verify == "y" ] 
+		then
+			BuatCicitBaru $cicit_id $hp_num "$nama" "$email"
+			echo "Sukses!!!"
+			read
+			AppMenu  $hp_num
+		else
+			echo "oke :("
+			read
+			HalUtama
+	fi
+}
+
+BuatCicitBaru()
+{
+	mysql projek -se "INSERT INTO cicit VALUES($1, '$3', '$2', '$4', default, default)"
+}
+
+AppMenu()
+{
+	clear
+	local hp_num=$1
+	local nama="$(mysql projek -se "SELECT nama FROM cicit WHERE hp_num = '$hp_num'")"
+	local saldo=$(mysql projek -se "SELECT saldo FROM cicit WHERE hp_num = '$hp_num'")
+	local email=$(mysql projek -se "SELECT email FROM cicit WHERE hp_num = '$hpmum'")
+
+	echo "						CICIT PAY"
+	echo ""
+	echo "$nama							Saldo |Rp| $saldo"
+	echo ""
+	echo "	1. Topup									2.Histori"
+echo "-------------------------------------------------------------------------------------------------------------"
+	echo ""
+	echo ""
+	echo "	3. Pay					4. Pulsa				"
+	echo ""
+	echo "	Mc Donard				Telkomsel				"
+	echo "	Yoshinayo				XL Axiata					"
+	echo "	Chatlime				Indosat oredo			"
+	echo ""
+	echo ""
+
+	echo ""
+	echo ""
+	echo "0. Logout"
+
+	read pilApp
+
+	case $pilApp in 
+		1)
+			clear
+			echo "Top Up"
+			echo "Instant"
+			read -p "|Rp| " topup
+			echo ""
+		       	echo "PILIH KARTU TOPUP"
+
+			data=($(mysql projek -se "SELECT kartu_id FROM oneclick WHERE cicit_id = 70001$hp_num"))
+			x=1
+			for i in "${data[@]}"
+			do
+				echo "$((x++)). $i"
+			done
+
+			echo "Pilih Kartu:			0. Add Debit Card"
+			read card
+
+		if [ $card -eq 0 ]
+		then
+			clear
+			echo ""
+			read -p "Add Cicit debit card: " add
+
+			search=$( mysql projek -se "SELECT hp_num FROM nasabah n JOIN kartu k ON k.rek_id = n.rek_id JOIN rekening r ON r.rek_id = k.rek_id WHERE kartu_id = $add")
+
+			if [ -z  "$search" ] 
+			then
+				echo "card not found"
+				read
+				AppMenu $hp_num
+			else
+				if [ $hp_num -eq $search ]
+				then
+					echo ""
+					mysql projek -se "INSERT INTO oneclick VALUES(default, $add, 70001$hp_num)"
+					echo "Add kartu debit berhasil!"
+					read
+					AppMenu $hp_num
+				else
+					echo "maaf phone number yang terdaftar di kartu tidak sama dengan phone number akun ini!"
+					read
+					AppMenu $hp_num
+				fi
+			fi
+
+		else
+
+			saldoN=($(mysql projek -se "SELECT saldo FROM rekening WHERE rek_id = (SELECT rek_id FROM kartu WHERE kartu_id = ${data[$card-1]})"))
+
+			if [ $saldoN -ge $topup ]
+			then
+				clear
+				mysql projek -se "UPDATE rekening SET saldo = saldo-$topup WHERE rek_id = (SELECT rek_id FROM kartu WHERE kartu_id = ${data[$card-1]})"
+				mysql projek -se "UPDATE cicit SET saldo = saldo+$topup WHERE hp_num = $hp_num"
+				echo "Topup Success!!"
+				echo ""
+				read
+				AppMenu $hp_num
+
+			else
+				echo "unificient balance"
+				read
+				AppMenu $hp_num
+			fi	
+
+		fi ;;
+
+		2)
+			CicitHistori $hp_num ;;
+		3)
+			Food $hp_num $saldo;;
+		4)
+			Pulsa $hp_num $saldo;;
+		0)
+			LoginMenu ;;
+		*)
+			AppMenu $hp_num ;;
+	esac
+}
+
+Pulsa()
+{
+	clear
+	local hp_num=$1
+	local saldo=$2
+	local nominal=0
+	local rek_opt=0
+	local nama_opt=0
+
+	local companytelkom=11000
+	local companyxl=12000
+	local companyindosat=13000
+
+	local type="xl"
+	local keterangan="Pulsa "
+	
+	telkomsel="^08[125][123][0-9]{7,8}$"
+	xl="^08[157][789][0-9]{7,8}$"
+	indosat="08[51][45678][0-9]{7,8}"
+
+	if [[ $hp_num =~ $telkomsel ]];
+       	then
+		type="telkomsel"
+		rek_opt=$(mysql projek -se "SELECT rek_id FROM rekening WHERE rek_id = (SELECT rek_id FROM company WHERE company_id = $companytelkom)")
+		nama_opt=$(mysql projek -se "SELECT nama FROM company WHERE rek_id = $rek_opt")
+
+	elif [[ $hp_num =~ $xl ]];
+	then	
+		type="XL AXIATA"
+		rek_opt=$(mysql projek -se "SELECT rek_id FROM rekening WHERE rek_id = (SELECT rek_id FROM company WHERE company_id = $companyxl)")
+		nama_opt=$(mysql projek -se "SELECT nama FROM company WHERE rek_id = $rek_opt")
+	else
+		type="INDOSAT"
+		rek_opt=$(mysql projek -se "SELECT rek_id FROM rekening WHERE rek_id = (SELECT rek_id FROM company WHERE company_id = $companyindosat)")
+		nama_opt=$(mysql projek -se "SELECT nama FROM company WHERE rek_id = $rek_opt")
+	fi
+
+	echo "$type"
+	echo ""
+	echo "Top up pulsa: $hp_num"
+	echo "1. 10.000 	= 12.000"
+	echo "2. 50.000 	= 51.000"
+	echo "3. 100.000 = 100.000"
+	read pil
+
+	if [ $pil -eq 1 ]
+	then
+		nominal=12000
+
+	elif [ $pil -eq 2 ]
+	then
+		nominal=51000
+	
+	elif [ $pil -eq 3 ]
+	then
+		nominal=100000
+	else
+		AppMenu $hp_num
+	fi
+	
+	if [ $saldo -ge $nominal ]
+	then
+		mysql projek -se "UPDATE cicit SET saldo = saldo - $nominal WHERE hp_num = $hp_num"
+		mysql projek -se "UPDATE rekening SET saldo = saldo + $nominal WHERE rek_id = $rek_opt"
+		mysql projek -se "INSERT INTO cicit_histori VALUES(default,$nominal,'$nama_opt', default, 70001$hp_num )"
+		echo "Pengisian ke $hp_num sebesar: $nominal Berhasil!"
+		read
+		AppMenu $hp_num
+	else
+		echo "saldo anda tidak cukup :("
+		read
+		AppMenu $hp_num
+
+	fi
+}
+
+Food()
+{
+	local hp_num=$1
+	local saldo=$2
+	clear
+	local histori_id=0
+	local rek=0
+	local nama_comp="nama"
+	echo "FOOD"
+	echo " 1. Mc Donard"
+	echo " 2. Yoshinayo"
+	echo ""
+	echo "Drinks"
+	echo " 3. Chatlime"
+
+	read pil
+
+	if [ $pil -eq 1 ]
+	then
+		rek=$(mysql projek -se "SELECT rek_id FROM company WHERE company_id = 19000")
+		nama_comp=$(mysql projek -se "SELECT nama FROM company WHERE company_id = 19000")
+	elif [ $pil -eq 2 ] 
+	then
+		rek=$(mysql projek -se "SELECT rek_id FROM company WHERE company_id = 21000")
+		nama_comp=$(mysql projek -se "SELECT nama FROM company WHERE company_id = 21000")
+	elif [ $pil -eq 3 ]
+	then
+		rek=$(mysql projek -se "SELECT rek_id FROM company WHERE company_id = 31000")
+		  nama_comp=$(mysql projek -se "SELECT nama FROM company WHERE company_id = 31000")
+	else
+
+		AppMenu $hp_num
+	fi
+
+	read -p "Masukan harga makanan/minuman: " nominal
+	echo "$nominal"
+	read
+
+	#if [[ $nominal =~ $regex ]];
+	#then
+		if [ $saldo -ge $nominal ]
+		then
+			read
+			mysql projek -se "UPDATE cicit SET saldo = saldo - $nominal WHERE hp_num = $hp_num"
+			mysql projek -se "UPDATE rekening SET saldo = saldo + $nominal WHERE rek_id = $rek"
+			mysql projek -se "INSERT cicit_histori VALUES(default, $nominal, '$nama_comp', default, 70001$hp_num)"
+
+			histori_id=$(mysql projek -se "SELECT histori_id FROM cicit_histori ORDER BY histori_id DESC LIMIT 1")
+			echo "Transaksi Berhasil!"
+			echo "Pembayaran id	: $histori_id "
+			echo "Pembayaran ke	: "$nama_comp""
+			echo "Dengan harga	: $nominal"
+			read
+			AppMenu $hp_num
+		else
+			clear
+			echo "Saldo kamu tidak cukup :("
+			read
+			AppMenu $hp_num
+		fi
+	#else
+	#	clear
+	#	echo "Format jumlah tidak sesuai"
+	#	read
+	#	AppMenu $hp_num
+	#fi
+
+}
+
+
+CicitHistori()
+{
+	clear
+        echo "|id|      		|jumlah|           [keterangan]                   [waktu]   "
+        echo ""
+
+IFS="\t"
+local hp_num=$1
+local cicit_id=70001$hp_num
+info=$(mysql projek -se "CALL cekCicitHistori($cicit_id)")
+
+IFS="$( echo -e '\t')"
+
+while read a b c d
+do
+         echo "[${a}]    [-${b}]          ["${c}"]          [${d}]  "
+done < <(echo "$info")
+
+echo""
+read
+AppMenu $hp_num
+}
+
+BankSystem

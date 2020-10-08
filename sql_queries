@@ -1,0 +1,155 @@
+				*BuatCompany*
+
+DELIMITER //
+CREATE PROCEDURE BuatCompany()
+BEGIN
+DECLARE sql_error TINYINT DEFAULT FALSE;
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+	SET sql_error = TRUE;
+
+START TRANSACTION;
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(70001, 'Cicit Pay', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(11000, 'Telkomsel', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(12000, 'XL Axiata', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(13000, 'Indosat', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(19000, 'Mc Donard', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(21000, 'Yoshinayo', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+INSERT INTO rekening VALUES(default, 1000000);
+INSERT INTO company VALUES(31000, 'Chatlime', (SELECT rek_id FROM rekening ORDER BY rek_id DESC LIMIT 1));
+
+IF sql_error = FALSE THEN
+	COMMIT;
+ELSE
+	ROLLBACK;
+END IF;
+
+END //
+DELIMITER ;
+				*DaftarNasabah*
+DELIMITER //
+CREATE PROCEDURE DaftarNasabah(
+IN $1 BIGINT, 
+IN $2 VARCHAR(30),
+IN $3 VARCHAR(30),
+IN $4 VARCHAR(30),
+IN $5 VARCHAR(30), 
+IN $6 INT)
+BEGIN
+DECLARE sql_error TINYINT DEFAULT FALSE;
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+	SET sql_error = TRUE;
+START TRANSACTION;
+INSERT INTO rekening VALUES(default, $6);
+
+INSERT INTO kartu VALUES(default, default, 
+(SELECT rek_id FROM rekening ORDER BY rek_id desc Limit 1));
+
+INSERT INTO nasabah VALUES($1, $2, $3, $4, $5, 
+(SELECT rek_id FROM rekening ORDER BY rek_id desc LIMIT 1));
+
+IF sql_error = FALSE THEN
+	COMMIT;
+ELSE 
+ROLLBACK;
+SHOW errors;
+END IF;
+END //
+DELIMITER ;
+
+
+				*TRANSAKSI ANTAR REKENING*
+DELIMITER //
+CREATE PROCEDURE TransAntarRek(IN jmlTransfer INT,
+IN dari VARCHAR(30),
+IN ke VARCHAR(30),
+IN rek_from BIGINT,
+IN rek_tujuan BIGINT)
+BEGIN
+DECLARE sql_error TINYINT DEFAULT FALSE;
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+	SET sql_error = TRUE;
+
+START TRANSACTION;
+
+UPDATE rekening SET saldo = saldo - jmlTransfer WHERE rek_id = rek_from;
+UPDATE rekening SET saldo = saldo + jmlTransfer WHERE rek_id = rek_tujuan;
+
+INSERT INTO histori VALUES(default, '-', ke, jmlTransfer, default, rek_from);
+INSERT INTO histori VALUES(default, '+', dari, jmlTransfer, default, rek_tujuan);
+ 
+IF sql_error = FALSE THEN
+	COMMIT;
+ELSE
+	ROLLBACK;
+END IF;
+
+END //
+DELIMITER ;
+
+					*TOP UP VIRTUAL ACCOUNT*
+DELIMITER //
+CREATE PROCEDURE ()
+BEGIN
+END //
+DELIMITER ;
+
+
+				*TRANSAKSI CICIT TO COMPANY*
+DELIMITER //
+CREATE PROCEDURE Trans
+END //
+DELIMITER ;
+
+					*CEK HISTORI*
+DELIMITER //
+CREATE PROCEDURE CekHistori(IN rek_id BIGINT)
+BEGIN
+SELECT histori_id, ket, nama, jumlah, waktu 
+FROM histori
+WHERE histori.rek_id = rek_id
+ORDER BY waktu DESC;
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE CekHistoriOut(IN rek_id BIGINT)
+BEGIN
+SELECT histori_id, ket, nama, jumlah, waktu 
+FROM histori
+WHERE histori.rek_id = rek_id AND ket = '-'
+ORDER BY waktu DESC;
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE CekHistoriIn(IN rek_id BIGINT)
+BEGIN
+SELECT histori_id, ket, nama, jumlah, waktu 
+FROM histori
+WHERE histori.rek_id = rek_id AND ket = '+'
+ORDER BY waktu DESC;
+END //
+DELIMITER ;
+
+				*CEK CICIT_HISTORI*
+DELIMITER //
+CREATE PROCEDURE cekCicitHistori(IN cicit_id BIGINT)
+BEGIN
+SELECT histori_id, jumlah, keterangan, waktu 
+FROM cicit_histori c 
+WHERE c.cicit_id = cicit_id
+ORDER BY histori_id DESC;
+END //
+DELIMITER ;
